@@ -21,16 +21,12 @@ func (user *User) SendMsg(msg string) {
 }
 
 func (user *User) Online() {
-	usermap.lock.Lock()
-	defer usermap.lock.Unlock()
-	usermap.userMaps[user.UserName] = user
+	usermap.userMaps.Store(user.UserName, user)
 }
 
 func (user *User) Offline() {
 	user.conn.Write([]byte("欢迎下次登陆\n"))
-	usermap.lock.Lock()
-	defer usermap.lock.Unlock()
-	delete(usermap.userMaps, user.conn.RemoteAddr().String())
+	usermap.userMaps.Delete(user.UserName)
 	user.conn.Close()
 	return
 }

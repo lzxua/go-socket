@@ -9,7 +9,7 @@ import (
 )
 
 type UserMapStruct struct {
-	userMaps map[string]*User
+	userMaps sync.Map
 	lock     sync.Mutex
 }
 
@@ -17,7 +17,7 @@ var usermap *UserMapStruct
 
 func ServiceStart() {
 	usermap = &UserMapStruct{
-		userMaps: make(map[string]*User),
+		userMaps: sync.Map{},
 		lock:     sync.Mutex{},
 	}
 	l, err := net.Listen("tcp", ":8080")
@@ -42,7 +42,7 @@ func getDate(user *User) {
 		if user.conn == nil {
 			break
 		}
-		if usermap.userMaps[user.conn.RemoteAddr().String()] == nil {
+		if _, ok := usermap.userMaps.Load(user.conn.RemoteAddr().String()); !ok {
 			user.Online()
 		}
 		if n == 0 {
@@ -56,7 +56,6 @@ func getDate(user *User) {
 func ChoiceTree(user *User, buff []byte, n int) {
 	inStr := strings.TrimSpace(string(buff[0:n]))
 	split := strings.Split(inStr, " ")
-	fmt.Println(split[0])
 	switch split[0] {
 	case "quit":
 		fmt.Printf("下线成功")
@@ -72,20 +71,23 @@ func ChoiceTree(user *User, buff []byte, n int) {
 // GroupChat 群聊
 func GroupChat(user *User, msg string) {
 	per := AddSuffix(user.UserName)
-	for _, value := range usermap.userMaps {
-		value.conn.Write([]byte(per + msg + "\n"))
-	}
+	usermap.userMaps.Range(func(key, value any) bool {
+		value.(*User).conn.Write([]byte(per + msg + "\n"))
+		return true
+	})
 }
 
 // PrivateChat 私聊
 func PrivateChat(user *User, from, msg string) {
-	fmt.Printf(msg)
-	if usermap.userMaps[from] == nil {
+	if _, ok := usermap.userMaps.Load(from); !ok {
 		user.conn.Write([]byte("无此用户或用户未上限\n"))
 		return
 	}
 	per := AddSuffix(user.UserName + "[private]")
-	usermap.userMaps[from].conn.Write([]byte(per + msg))
+	value, ok := usermap.userMaps.Load(from)
+	if ok {
+		value.(*User).conn.Write([]byte(per + msg))
+	}
 	return
 }
 
